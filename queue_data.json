@@ -1,0 +1,1 @@
+{"lastTicketGiven": 4, "queue": [{"number": 3, "timeTaken": "2025-05-15T08:56:45.935167", "timeServed": null}, {"number": 4, "timeTaken": "2025-05-15T08:56:46.999431", "timeServed": null}], "currentTicket": {"number": 2, "timeTaken": "2025-05-15T08:56:44.514651", "timeServed": "2025-05-15T08:56:52.335680"}}
