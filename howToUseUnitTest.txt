@@ -1,0 +1,13 @@
+* In the terminal, just type:
+    `python -m unittest test_barber_queue.py`
+
+
+* If all is good, you’ll see something like:
+
+    ....
+    ----------------------------------------------------------------------
+    Ran 4 tests in 0.002s
+
+    OK
+
+**

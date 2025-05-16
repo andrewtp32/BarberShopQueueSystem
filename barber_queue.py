@@ -1,134 +1,185 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+from statistics import mean
 
 
 class Ticket:
-    def __init__(self, number, timeTaken=None, timeServed=None):
+    """Represents a single customer's ticket in the queue."""
+    def __init__(self, number):
         self.number = number
-        self.timeTaken = timeTaken or datetime.now()
-        self.timeServed = timeServed
+        self.timeTaken = datetime.now()       # Time ticket was issued
+        self.timeServed = None                # Filled in when served
 
     def markServed(self):
+        """Mark this ticket as served now."""
         self.timeServed = datetime.now()
 
-    def toDict(self):
+    def to_dict(self):
+        """Serialize ticket to a dict for JSON saving."""
         return {
             "number": self.number,
             "timeTaken": self.timeTaken.isoformat(),
             "timeServed": self.timeServed.isoformat() if self.timeServed else None
         }
 
-    @classmethod
-    def fromDict(cls, data):
-        timeTaken = datetime.fromisoformat(data["timeTaken"])
-        timeServed = datetime.fromisoformat(data["timeServed"]) if data["timeServed"] else None
-        return cls(data["number"], timeTaken, timeServed)
+    @staticmethod
+    def from_dict(data):
+        """Reconstruct a Ticket from a saved JSON dict."""
+        ticket = Ticket(data["number"])
+        ticket.timeTaken = datetime.fromisoformat(data["timeTaken"])
+        if data["timeServed"]:
+            ticket.timeServed = datetime.fromisoformat(data["timeServed"])
+        return ticket
 
 
 class BarberQueue:
+    """Manages the state of the queue system."""
     def __init__(self):
-        self.currentTicket = None
+        self.queue = []                  # List of waiting Ticket objects
+        self.currentTicket = None        # Currently served ticket
         self.lastTicketGiven = 0
-        self.queue = []
+        self.servedTickets = []          # List of completed Ticket objects
 
     def takeTicket(self):
+        """Create and add a new ticket to the queue. Show estimated wait."""
         self.lastTicketGiven += 1
         ticket = Ticket(self.lastTicketGiven)
         self.queue.append(ticket)
 
-        position = len(self.queue)
-        print(f"\nYour ticket number is {ticket.number}.")
-        print(f"There are {position - 1} people ahead of you.")
-        print(f"Time taken: {ticket.timeTaken.strftime('%I:%M:%S %p')}\n")
+        print(f"Ticket #{ticket.number} taken at {ticket.timeTaken.strftime('%H:%M:%S')}")
+
+        people_ahead = len(self.queue) - 1
+        print(f"There are {people_ahead} people ahead of you.")
+
+        avg_wait = self.getAverageWaitTime()
+        if avg_wait is not None and people_ahead > 0:
+            estimated_wait = int(avg_wait * people_ahead)
+            print(f"Estimated wait time: {estimated_wait} minutes.")
+        elif people_ahead == 0:
+            print("No wait — you’ll be served shortly!")
+        else:
+            print("Waiting time estimate is not available yet.")
 
     def serveNext(self):
+        """Move the next person in the queue into service."""
         if self.queue:
             self.currentTicket = self.queue.pop(0)
             self.currentTicket.markServed()
-
-            print(f"\nNow serving ticket #{self.currentTicket.number}.")
-            print(f"Time taken: {self.currentTicket.timeTaken.strftime('%I:%M:%S %p')}")
-            print(f"Time served: {self.currentTicket.timeServed.strftime('%I:%M:%S %p')}\n")
+            self.servedTickets.append(self.currentTicket)
+            print(f"Now serving Ticket #{self.currentTicket.number} (served at {self.currentTicket.timeServed.strftime('%H:%M:%S')})")
         else:
-            self.currentTicket = None
-            print("\nNo one is currently in the queue.\n")
+            print("No one is waiting in the queue.")
 
-    def viewCurrent(self):
+    def getAverageWaitTime(self):
+        """Calculate the average wait time (in minutes) from served tickets."""
+        wait_times = []
+
+        if self.currentTicket and self.currentTicket.timeServed:
+            wait_time = (self.currentTicket.timeServed - self.currentTicket.timeTaken).total_seconds()
+            wait_times.append(wait_time)
+
+        for ticket in self.servedTickets:
+            if ticket.timeServed:
+                wait_time = (ticket.timeServed - ticket.timeTaken).total_seconds()
+                wait_times.append(wait_time)
+
+        if not wait_times:
+            return None
+
+        avg_seconds = mean(wait_times)
+        return avg_seconds / 60  # Return minutes
+
+    def showStatus(self):
+        """Print the queue status and who's currently being served."""
+        print("\n--- Queue Status ---")
         if self.currentTicket:
-            print(f"\nCurrently serving ticket #{self.currentTicket.number}")
-            print(f"Time taken: {self.currentTicket.timeTaken.strftime('%I:%M:%S %p')}")
-            print(f"Time served: {self.currentTicket.timeServed.strftime('%I:%M:%S %p')}\n")
+            print(f"Currently serving: Ticket #{self.currentTicket.number}")
         else:
-            print("\nNo ticket is currently being served.\n")
-
-    def viewStatus(self):
-        print("\nQueue Status:")
-        if self.currentTicket:
-            print(f"- Currently serving: {self.currentTicket.number}")
-        else:
-            print("- Currently serving: None")
-
-        print(f"- People waiting: {len(self.queue)}")
-
-        if self.queue:
-            print("- Tickets in queue:")
-            for t in self.queue:
-                print(f"  Ticket #{t.number} (taken at {t.timeTaken.strftime('%I:%M:%S %p')})")
-        print()
+            print("No one is currently being served.")
+        print(f"Waiting in queue: {[ticket.number for ticket in self.queue]}")
 
     def saveToFile(self, filename="queue_data.json"):
+        """Save the full queue state to a JSON file."""
         data = {
             "lastTicketGiven": self.lastTicketGiven,
-            "queue": [t.toDict() for t in self.queue],
-            "currentTicket": self.currentTicket.toDict() if self.currentTicket else None
+            "queue": [t.to_dict() for t in self.queue],
+            "servedTickets": [t.to_dict() for t in self.servedTickets],
+            "currentTicket": self.currentTicket.to_dict() if self.currentTicket else None
         }
         with open(filename, "w") as f:
-            json.dump(data, f)
-        print(f"\nQueue state saved to {filename}\n")
+            json.dump(data, f, indent=4)
+        print("Queue state saved to file.")
 
     def loadFromFile(self, filename="queue_data.json"):
+        """Load the queue state from a JSON file, resetting if it's a new day."""
         try:
             with open(filename, "r") as f:
                 data = json.load(f)
+
+            # Compare saved date to today's date
+            last_saved_date = datetime.fromisoformat(
+                data.get("lastResetDate", datetime.now().isoformat())
+            ).date()
+            today = datetime.now().date()
+
+            if today > last_saved_date:
+                print("New day detected. Resetting queue to start fresh.")
+                return  # Leave self.* values in default state (empty queue)
+
+            # Load saved data if it's still the same day
             self.lastTicketGiven = data["lastTicketGiven"]
-            self.queue = [Ticket.fromDict(td) for td in data["queue"]]
-            self.currentTicket = Ticket.fromDict(data["currentTicket"]) if data["currentTicket"] else None
-            print(f"\nQueue state loaded from {filename}\n")
+            self.queue = [Ticket.from_dict(d) for d in data["queue"]]
+            self.servedTickets = [Ticket.from_dict(d) for d in data["servedTickets"]]
+            if data["currentTicket"]:
+                self.currentTicket = Ticket.from_dict(data["currentTicket"])
+            else:
+                self.currentTicket = None
+            print("Queue state loaded from file.")
         except FileNotFoundError:
-            print(f"\nNo existing data file found — starting fresh.\n")
+            print("No saved queue found. Starting fresh.")
 
 
-def mainMenu():
+
+def run_queue_system():
+    """Command-line interface to interact with the BarberQueue."""
     queue = BarberQueue()
     queue.loadFromFile()
 
     while True:
-        print("=== Barber Queue System ===")
-        print("1. Take a Ticket")
-        print("2. View Current Ticket Being Served")
-        print("3. Serve Next Customer")
-        print("4. View Queue Status")
-        print("5. Save Queue to File")
-        print("6. Exit")
-        choice = input("Select an option (1-6): ")
+        print("\n--- Barber Queue System ---")
+        print("1. Take a ticket")
+        print("2. Serve next customer")
+        print("3. Show queue status")
+        print("4. Save queue")
+        print("5. Load queue")
+        print("6. Show average wait time")
+        print("7. Exit")
+
+        choice = input("Select an option: ")
 
         if choice == "1":
             queue.takeTicket()
         elif choice == "2":
-            queue.viewCurrent()
-        elif choice == "3":
             queue.serveNext()
+        elif choice == "3":
+            queue.showStatus()
         elif choice == "4":
-            queue.viewStatus()
+            queue.saveToFile()
         elif choice == "5":
-            queue.saveToFile()
+            queue.loadFromFile()
         elif choice == "6":
+            avg_wait = queue.getAverageWaitTime()
+            if avg_wait is None:
+                print("Not enough data to calculate average wait time yet.")
+            else:
+                print(f"Average wait time: {int(avg_wait)} minutes.")
+        elif choice == "7":
             queue.saveToFile()
-            print("\nGoodbye!\n")
+            print("Exiting. Queue state saved.")
             break
         else:
-            print("\nInvalid option. Please try again.\n")
+            print("Invalid option. Please try again.")
 
 
 if __name__ == "__main__":
-    mainMenu()
+    run_queue_system()
