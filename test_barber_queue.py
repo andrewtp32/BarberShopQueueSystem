@@ -1,7 +1,19 @@
+"""
+What this test does:
+    Takes two tickets.
+    Serves the first one.
+    Calls showStatus and captures the output.
+    Asserts that:
+        It correctly reports the currently serving ticket.
+        It lists the remaining ticket(s) in the queue.
+"""
+
 import unittest
 import os
 import json
+import io
 from datetime import datetime, timedelta
+from contextlib import redirect_stdout
 from barber_queue import BarberQueue, Ticket
 
 class TestBarberQueue(unittest.TestCase):
@@ -64,10 +76,23 @@ class TestBarberQueue(unittest.TestCase):
         new_queue = BarberQueue()
         new_queue.loadFromFile("test_reset.json")
 
-        # Should reset to empty queue
         self.assertEqual(new_queue.lastTicketGiven, 0)
         self.assertEqual(len(new_queue.queue), 0)
         os.remove("test_reset.json")
+
+    def test_show_status_output(self):
+        """Capture and verify the output of showStatus."""
+        self.queue.takeTicket()
+        self.queue.takeTicket()
+        self.queue.serveNext()
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.queue.showStatus()
+        status_output = output.getvalue()
+
+        self.assertIn("Currently serving: Ticket #1", status_output)
+        self.assertIn("Waiting in queue: [2]", status_output)
 
 if __name__ == '__main__':
     unittest.main()
